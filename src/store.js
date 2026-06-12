@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export const DEMO_BOOKINGS = [
   {
@@ -147,8 +148,10 @@ export const DEMO_BOOKINGS = [
   },
 ]
 
-export const useStore = create((set, get) => ({
-  bookings: DEMO_BOOKINGS,
+export const useStore = create(
+  persist(
+    (set, get) => ({
+  bookings: [],
   activeTab: 'timeline',
   selectedId: null,
   searchQuery: '',
@@ -209,4 +212,10 @@ export const useStore = create((set, get) => ({
     }
     return list
   },
-}))
+}),
+{
+  name: 'rezo-storage',
+  partialize: state => ({ isOnboarded: state.isOnboarded }),
+}
+)
+)
