@@ -44,7 +44,15 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
 
             const booking = await parseAndSaveEmail(text, userId)
             if (booking && !cancelRef.current) {
-              setFound(prev => [...prev, booking])
+              setFound(prev => {
+                // Deduplicate by conf number or by title+date
+                const key = booking.conf || `${booking.title}|${booking.dateISO}`
+                const isDupe = prev.some(b =>
+                  (b.conf && b.conf === booking.conf) ||
+                  (!b.conf && `${b.title}|${b.dateISO}` === key)
+                )
+                return isDupe ? prev : [...prev, booking]
+              })
             }
           } catch {
             // skip unparseable or non-booking emails silently
