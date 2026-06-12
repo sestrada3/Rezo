@@ -158,15 +158,6 @@ export default function App() {
     )
   }
 
-  if (!isOnboarded) {
-    return (
-      <>
-        <GlobalStyle />
-        <AppShell><Onboarding /></AppShell>
-      </>
-    )
-  }
-
   if (selectedId) {
     return (
       <>
