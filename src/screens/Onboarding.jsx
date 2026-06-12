@@ -156,8 +156,7 @@ export default function Onboarding() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.color.s0 }}>
       {step === 1 && <Step1 onNext={() => setStep(2)} />}
-      {step === 2 && <Step2 onNext={() => setStep(3)} />}
-      {step === 3 && <Step3 onDone={complete} />}
+      {step === 2 && <Step2 onNext={complete} />}
     </div>
   )
 }
