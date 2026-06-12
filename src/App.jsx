@@ -4,7 +4,6 @@ import { T } from './tokens.js'
 import { supabase } from './lib/supabase.js'
 import { loadBookings } from './lib/bookings.js'
 import BottomNav from './components/BottomNav.jsx'
-import Icon from './components/Icon.jsx'
 import Timeline from './screens/Timeline.jsx'
 import Wallet from './screens/Wallet.jsx'
 import Search from './screens/Search.jsx'
@@ -12,18 +11,19 @@ import Settings from './screens/Settings.jsx'
 import BookingDetail from './screens/BookingDetail.jsx'
 import Onboarding from './screens/Onboarding.jsx'
 import ImportEmail from './screens/ImportEmail.jsx'
+import ScanInbox from './screens/ScanInbox.jsx'
 import Auth from './screens/Auth.jsx'
+import { Plus } from '@phosphor-icons/react'
 
 const GlobalStyle = () => (
   <style>{`
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
     body {
-      font-family: 'DM Sans', sans-serif;
-      background: #EEF2FF;
+      font-family: 'Inter', sans-serif;
+      background: #0C0C0F;
       display: flex; align-items: center; justify-content: center;
-      min-height: 100vh;
+      min-height: 100dvh;
     }
-    /* Desktop: show branding beside the phone */
     @media (min-width: 900px) {
       body { gap: 64px; padding: 40px; }
       #desktop-brand { display: flex !important; }
@@ -35,42 +35,34 @@ const GlobalStyle = () => (
     @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
     @keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin    { to { transform: rotate(360deg); } }
   `}</style>
 )
 
 function DesktopBrand() {
   return (
-    <div id="desktop-brand" style={{
-      display: 'none',
-      flexDirection: 'column', gap: 32,
-      maxWidth: 380,
-    }}>
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-        <span style={{ fontSize: 48, fontWeight: 700, color: '#4338CA', fontFamily: 'DM Sans, sans-serif', lineHeight: 1 }}>re</span>
-        <span style={{ fontSize: 48, fontWeight: 700, color: '#818CF8', fontFamily: 'DM Sans, sans-serif', lineHeight: 1 }}>zo</span>
+    <div id="desktop-brand" style={{ display: 'none', flexDirection: 'column', gap: 32, maxWidth: 380 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 48, fontWeight: 800, color: T.color.brand, fontFamily: 'Inter, sans-serif', lineHeight: 1, letterSpacing: '-2px' }}>re</span>
+        <span style={{ fontSize: 48, fontWeight: 800, color: T.color.sub,   fontFamily: 'Inter, sans-serif', lineHeight: 1, letterSpacing: '-2px' }}>zo</span>
       </div>
-
       <div>
-        <div style={{ fontSize: 32, fontWeight: 700, color: '#0F0F1A', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.25, marginBottom: 16 }}>
+        <div style={{ fontSize: 32, fontWeight: 700, color: T.color.text, fontFamily: 'Inter, sans-serif', lineHeight: 1.2, marginBottom: 16, letterSpacing: '-0.5px' }}>
           Every reservation.<br />One place.
         </div>
-        <div style={{ fontSize: 16, color: '#6B7280', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.7 }}>
-          Rezo finds your flights, hotels, restaurants, shows, concerts, and more — automatically from your email. One timeline. No switching apps.
+        <div style={{ fontSize: 15, color: T.color.sub, fontFamily: 'Inter, sans-serif', lineHeight: 1.7 }}>
+          Rezo finds your flights, hotels, restaurants, shows, concerts, and more — automatically from your email.
         </div>
       </div>
-
-      {/* Feature list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
           { emoji: '✈️', text: 'Flights, hotels, dining, concerts, sports, theater, cars' },
-          { emoji: '📧', text: 'Auto-imports from Gmail — no copy-paste needed' },
+          { emoji: '📧', text: 'Auto-scans Gmail — no forwarding or copy-paste needed' },
           { emoji: '📱', text: 'Install on your phone — works like a native app' },
-          { emoji: '🎫', text: 'Add passes to Apple or Google Wallet' },
         ].map(({ emoji, text }) => (
           <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{emoji}</span>
-            <span style={{ fontSize: 15, color: '#374151', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.5 }}>{text}</span>
+            <span style={{ fontSize: 14, color: T.color.sub, lineHeight: 1.5 }}>{text}</span>
           </div>
         ))}
       </div>
@@ -78,43 +70,36 @@ function DesktopBrand() {
   )
 }
 
-function AppShell({ children, showNav, showImport, onImport }) {
+function AppShell({ children, showNav, onImport }) {
   const { activeTab, setTab } = useStore()
   return (
     <div style={{
       width: '100%', maxWidth: 430,
       height: '100dvh', maxHeight: 932,
-      background: T.color.surface,
+      background: T.color.s0,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
-      boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
+      boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
       position: 'relative',
     }}>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {children}
       </div>
       {showNav && <BottomNav active={activeTab} onTab={setTab} />}
-
-      {showImport && (
-        <button
-          onClick={onImport}
-          style={{
-            position: 'absolute',
-            bottom: T.space.navHeight + 16,
-            right: 20,
-            width: 52, height: 52, borderRadius: '50%',
-            background: T.color.brand,
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 16px rgba(67,56,202,0.4)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-            WebkitTapHighlightColor: 'transparent',
-            zIndex: 10,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(67,56,202,0.5)' }}
-          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(67,56,202,0.4)' }}
+      {onImport && (
+        <button onClick={onImport} style={{
+          position: 'absolute', bottom: T.space.navHeight + 16, right: 20,
+          width: 52, height: 52, borderRadius: '50%',
+          background: T.color.brand, border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 4px 20px rgba(245,166,35,0.4)`,
+          zIndex: 10, WebkitTapHighlightColor: 'transparent',
+          transition: `transform 0.15s ${T.ease.std}`,
+        }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
         >
-          <Icon name="plus" color="#fff" size={22} />
+          <Plus size={22} color={T.color.s0} weight="bold" />
         </button>
       )}
     </div>
@@ -123,24 +108,26 @@ function AppShell({ children, showNav, showImport, onImport }) {
 
 export default function App() {
   const { isOnboarded, activeTab, selectedId, user, setUser, setBookings } = useStore()
-  const [showImport, setShowImport] = useState(false)
-  const [authReady, setAuthReady]   = useState(false)
+  const [showImport, setShowImport]   = useState(false)
+  const [showScan, setShowScan]       = useState(false)
+  const [gmailToken, setGmailToken]   = useState(null)
+  const [authReady, setAuthReady]     = useState(false)
 
-  // Listen for Supabase auth changes (handles magic link redirect too)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
+      setGmailToken(session?.provider_token ?? null)
       setAuthReady(true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      setGmailToken(session?.provider_token ?? null)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load bookings whenever auth state settles
   useEffect(() => {
     if (!authReady || !isOnboarded) return
     loadBookings(user?.id ?? null)
@@ -152,38 +139,30 @@ export default function App() {
     return (
       <>
         <GlobalStyle />
-        <AppShell showNav={false} showImport={false}>
+        <AppShell>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ ...T.font.cardMeta, color: T.color.muted, animation: 'pulse 1.2s ease infinite' }}>
-              Loading…
-            </div>
+            <div style={{ ...T.font.cardMeta, color: T.color.ghost, animation: 'pulse 1.2s ease infinite' }}>Loading…</div>
           </div>
         </AppShell>
       </>
     )
   }
 
-  // Not logged in → show auth screen (with desktop branding)
   if (!user) {
     return (
       <>
         <GlobalStyle />
         <DesktopBrand />
-        <AppShell showNav={false} showImport={false}>
-          <Auth />
-        </AppShell>
+        <AppShell><Auth /></AppShell>
       </>
     )
   }
 
-  // Logged in but not onboarded yet → onboarding flow
   if (!isOnboarded) {
     return (
       <>
         <GlobalStyle />
-        <AppShell showNav={false} showImport={false}>
-          <Onboarding />
-        </AppShell>
+        <AppShell><Onboarding /></AppShell>
       </>
     )
   }
@@ -192,9 +171,7 @@ export default function App() {
     return (
       <>
         <GlobalStyle />
-        <AppShell showNav={false} showImport={false}>
-          <BookingDetail />
-        </AppShell>
+        <AppShell><BookingDetail /></AppShell>
       </>
     )
   }
@@ -203,17 +180,24 @@ export default function App() {
     timeline: <Timeline />,
     wallet:   <Wallet />,
     search:   <Search />,
-    settings: <Settings />,
+    settings: <Settings onScanInbox={() => setShowScan(true)} hasGmailAccess={!!gmailToken} />,
   }
 
   return (
     <>
       <GlobalStyle />
       <DesktopBrand />
-      <AppShell showNav showImport onImport={() => setShowImport(true)}>
+      <AppShell showNav onImport={() => setShowImport(true)}>
         {screens[activeTab]}
       </AppShell>
       {showImport && <ImportEmail onClose={() => setShowImport(false)} userId={user.id} />}
+      {showScan && (
+        <ScanInbox
+          onClose={() => setShowScan(false)}
+          accessToken={gmailToken}
+          userId={user.id}
+        />
+      )}
     </>
   )
 }

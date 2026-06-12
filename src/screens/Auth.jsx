@@ -24,7 +24,11 @@ export default function Auth() {
     setLoading(true); setError('')
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'https://www.googleapis.com/auth/gmail.readonly',
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
     })
     if (err) { setError(err.message); setLoading(false) }
   }

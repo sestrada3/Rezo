@@ -3,7 +3,7 @@ import { useStore } from '../store.js'
 import { T } from '../tokens.js'
 import { supabase } from '../lib/supabase.js'
 import {
-  Envelope, Bell, Info, SignOut, Check, CaretRight,
+  Envelope, Bell, Info, SignOut, Check, CaretRight, EnvelopeOpen,
 } from '@phosphor-icons/react'
 
 function SLabel({ children }) {
@@ -90,7 +90,7 @@ const NOTIFS = [
   { key: 'cars',     label: 'Car rental alerts', desc: 'Pickup day + return deadline' },
 ]
 
-export default function Settings() {
+export default function Settings({ onScanInbox, hasGmailAccess }) {
   const { linkedAccounts, notifs, toggleLinked, toggleNotif, user } = useStore()
 
   const signOut = async () => {
@@ -136,6 +136,34 @@ export default function Settings() {
               {i < arr.length - 1 && <div style={{ height: 1, background: T.color.sep, margin: '0 16px' }} />}
             </div>
           ))}
+        </div>
+
+        <SLabel>Import</SLabel>
+        <div style={{ background: T.color.s1, borderRadius: 14, border: `1px solid ${T.color.sep}`, overflow: 'hidden' }}>
+          {hasGmailAccess ? (
+            <Row
+              icon={EnvelopeOpen}
+              label="Scan Gmail inbox"
+              description="Find all confirmation emails automatically"
+              onClick={onScanInbox}
+              right={<CaretRight size={14} color={T.color.ghost} />}
+            />
+          ) : (
+            <div style={{ padding: '14px 16px' }}>
+              <div style={{ ...T.font.cardSub, color: T.color.text, fontWeight: 500, marginBottom: 4 }}>Scan Gmail inbox</div>
+              <div style={{ ...T.font.cardMeta, color: T.color.ghost, lineHeight: 1.5, marginBottom: 10 }}>
+                Sign out and sign back in to grant Gmail access.
+              </div>
+              <button onClick={signOut} style={{
+                padding: '8px 14px', borderRadius: 8,
+                background: T.color.brandDim, border: `1px solid ${T.color.brandBorder}`,
+                color: T.color.brand, fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer',
+              }}>
+                Re-connect Google
+              </button>
+            </div>
+          )}
         </div>
 
         <SLabel>App</SLabel>
