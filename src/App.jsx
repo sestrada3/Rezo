@@ -123,10 +123,48 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       setGmailToken(session?.provider_token ?? null)
+      if (session?.provider_token && session?.user) {
+        startGmailWatch(session)
+        setupPushNotifications(session.user.id)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  async function startGmailWatch(session) {
+    try {
+      await fetch('/api/gmail-watch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId:       session.user.id,
+          email:        session.user.email,
+          accessToken:  session.provider_token,
+          refreshToken: session.provider_refresh_token,
+        }),
+      })
+    } catch { /* non-fatal */ }
+  }
+
+  async function setupPushNotifications(userId) {
+    try {
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) return
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') return
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: 'BH2T6wxxLRkfQyQbzQHwfUlpG9RSOPeYpKnJcc823IeE2qr0zlem-XUNdUURv8uiV-dZOm5SQjXWs95svPiesnc',
+      })
+      await fetch('/api/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, subscription: sub }),
+      })
+    } catch { /* non-fatal */ }
+  }
 
   useEffect(() => {
     if (!authReady || !isOnboarded) return
