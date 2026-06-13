@@ -7,14 +7,27 @@ const SEARCH_QUERY = [
   '-category:social',
 ].join(' ')
 
-export async function listConfirmationEmails(accessToken, maxResults = 50) {
-  const res = await fetch(
-    `${GMAIL}/messages?q=${encodeURIComponent(SEARCH_QUERY)}&maxResults=${maxResults}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  )
-  if (!res.ok) throw new Error(`Gmail search failed: ${res.status}`)
-  const data = await res.json()
-  return data.messages || []
+export async function listConfirmationEmails(accessToken, maxTotal = 500) {
+  const messages = []
+  let pageToken = null
+
+  do {
+    const url = new URL(`${GMAIL}/messages`)
+    url.searchParams.set('q', SEARCH_QUERY)
+    url.searchParams.set('maxResults', Math.min(500, maxTotal - messages.length))
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) throw new Error(`Gmail search failed: ${res.status}`)
+    const data = await res.json()
+
+    if (data.messages) messages.push(...data.messages)
+    pageToken = data.nextPageToken ?? null
+  } while (pageToken && messages.length < maxTotal)
+
+  return messages
 }
 
 export async function getEmailText(accessToken, messageId) {

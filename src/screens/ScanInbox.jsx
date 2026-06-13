@@ -26,7 +26,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
   async function run() {
     try {
       setPhase('scanning')
-      const messages = await listConfirmationEmails(accessToken, 50)
+      const messages = await listConfirmationEmails(accessToken, 500)
       if (!messages.length) { setPhase('done'); return }
 
       setTotal(messages.length)
