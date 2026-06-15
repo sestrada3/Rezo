@@ -1,17 +1,7 @@
 import { supabase } from './supabase.js'
 
-export async function parseAndSaveEmail(emailText, userId = null) {
-  const res = await fetch('/api/parse-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ emailText }),
-  })
-  const result = await res.json()
-  if (!result.ok) throw new Error(result.error || 'parse_failed')
-
-  const b = result.booking
-
-  const row = {
+function bookingToRow(b, userId, source) {
+  return {
     type:      b.type,
     title:     b.title,
     subtitle:  b.subtitle,
@@ -21,24 +11,74 @@ export async function parseAndSaveEmail(emailText, userId = null) {
     status:    b.status ?? 'confirmed',
     conf:      b.conf ?? null,
     details:   b.details ?? {},
-    raw_email: emailText,
-    source:    'manual',
+    raw_email: b.raw_email ?? null,
+    source:    source,
     user_id:   userId,
   }
-
-  const { data, error } = await supabase.from('bookings').insert(row).select().single()
-  if (error) throw new Error(error.message)
-
-  return dbRowToBooking(data)
 }
 
-export async function loadBookings(userId = null) {
-  let query = supabase.from('bookings').select('*').order('date_iso', { ascending: true })
+// Parse an email into a booking WITHOUT writing to the DB.
+export async function parseEmail(emailText) {
+  const res = await fetch('/api/parse-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailText }),
+  })
+  const result = await res.json()
+  if (!result.ok) throw new Error(result.error || 'parse_failed')
+  return { ...result.booking, raw_email: emailText }
+}
 
-  if (userId) query = query.eq('user_id', userId)
-  else        query = query.is('user_id', null)
+// Parse + persist a single email (used by manual import).
+export async function parseAndSaveEmail(emailText, userId) {
+  if (!userId) throw new Error('not_signed_in')
+  const booking = await parseEmail(emailText)
+  const [saved] = await saveBookings([booking], userId, 'manual')
+  return saved
+}
 
-  const { data, error } = await query
+// Bulk upsert confirmed bookings. Dedupes on (user_id, conf) server-side.
+export async function saveBookings(bookings, userId, source = 'scan') {
+  if (!userId) throw new Error('not_signed_in')
+  if (!bookings.length) return []
+
+  const withConf    = bookings.filter(b => b.conf)
+  const withoutConf = bookings.filter(b => !b.conf)
+  const saved = []
+
+  // Rows with a conf number can be safely upserted (idempotent).
+  if (withConf.length) {
+    const { data, error } = await supabase
+      .from('bookings')
+      .upsert(withConf.map(b => bookingToRow(b, userId, source)), {
+        onConflict: 'user_id,conf',
+      })
+      .select()
+    if (error) throw new Error(error.message)
+    saved.push(...data.map(dbRowToBooking))
+  }
+
+  // Rows without a conf can't be deduped by the index — plain insert.
+  if (withoutConf.length) {
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert(withoutConf.map(b => bookingToRow(b, userId, source)))
+      .select()
+    if (error) throw new Error(error.message)
+    saved.push(...data.map(dbRowToBooking))
+  }
+
+  return saved
+}
+
+export async function loadBookings(userId) {
+  if (!userId) return []
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date_iso', { ascending: true })
   if (error) throw new Error(error.message)
   return data.map(dbRowToBooking)
 }

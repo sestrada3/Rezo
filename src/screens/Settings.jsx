@@ -117,7 +117,7 @@ export default function Settings({ onScanInbox, hasGmailAccess }) {
             { id: 'apple',   service: 'Apple Mail', emoji: '✉️' },
           ].map(s => (
             <ToggleTile key={s.id} service={s.service} emoji={s.emoji}
-              linked={linkedAccounts.has(s.id)} onToggle={() => toggleLinked(s.id)} />
+              linked={linkedAccounts.includes(s.id)} onToggle={() => toggleLinked(s.id)} />
           ))}
         </div>
         <div style={{ ...T.font.cardMeta, color: T.color.ghost, marginTop: 8, lineHeight: 1.6 }}>
