@@ -10,10 +10,14 @@ async function fetchWithRetry(url, opts, tries = 4) {
   }
 }
 
+// Search the whole email, not just the subject — lots of real confirmations
+// (e.g. "You're going to Hamilton!", "Your trip details") don't use any of
+// these words in the subject line. Claude's parser does the final filtering
+// for whether something is actually a booking, so a wider net here just
+// costs a few extra parse calls rather than silently missing reservations.
 const SEARCH_QUERY = [
-  'subject:(confirmation OR reservation OR booking OR itinerary OR "your order" OR "order confirmed" OR "reservation confirmed")',
+  '(confirmation OR confirmed OR reservation OR reserved OR booking OR booked OR itinerary OR receipt OR eticket OR "e-ticket" OR boarding OR "your order" OR "your trip" OR "your reservation" OR "your booking")',
   'newer_than:2y',
-  '-category:promotions',
   '-category:social',
 ].join(' ')
 
