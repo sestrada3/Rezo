@@ -111,6 +111,7 @@ export default function App() {
   const [showScan, setShowScan]       = useState(false)
   const [gmailToken, setGmailToken]   = useState(null)
   const [authReady, setAuthReady]     = useState(false)
+  const [bookingsReady, setBookingsReady] = useState(false)
 
   useEffect(() => {
     // Supabase only includes provider_token on the initial OAuth callback; it's
@@ -178,16 +179,16 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!authReady || !user?.id) return
+    if (!authReady) return
+    if (!user?.id) { setBookingsReady(true); return }
+    setBookingsReady(false)
     loadBookings(user.id)
-      .then(rows => {
-        console.log('[rezo] loadBookings returned', rows.length, 'rows')
-        if (rows.length > 0) setBookings(rows)
-      })
+      .then(rows => setBookings(rows))
       .catch(err => console.error('[rezo] loadBookings error', err))
+      .finally(() => setBookingsReady(true))
   }, [authReady, user?.id])
 
-  if (!authReady) {
+  if (!authReady || !bookingsReady) {
     return (
       <>
         <GlobalStyle />
