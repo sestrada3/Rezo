@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { T } from '../tokens.js'
-import { X, CheckCircle, Warning } from '@phosphor-icons/react'
+import { X, Warning } from '@phosphor-icons/react'
 import { listConfirmationEmails, getEmailText } from '../lib/gmail.js'
-import { parseAndSaveEmail } from '../lib/bookings.js'
+import { parseEmail, saveBookings, loadBookings } from '../lib/bookings.js'
 import { useStore } from '../store.js'
 import BookingCard from '../components/BookingCard.jsx'
 
@@ -13,9 +13,10 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
   const [total, setTotal]           = useState(0)
   const [processed, setProcessed]   = useState(0)
   const [found, setFound]           = useState([])
+  const [saving, setSaving]         = useState(false)
   const [errorMsg, setErrorMsg]     = useState('')
-  const addBooking = useStore(s => s.addBooking)
-  const cancelRef  = useRef(false)
+  const setBookings = useStore(s => s.setBookings)
+  const cancelRef   = useRef(false)
 
   useEffect(() => {
     cancelRef.current = false
@@ -32,7 +33,6 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
       setTotal(messages.length)
       setPhase('parsing')
 
-      const results = []
       for (let i = 0; i < messages.length; i += BATCH) {
         if (cancelRef.current) break
         const batch = messages.slice(i, i + BATCH)
@@ -42,7 +42,8 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
             const text = await getEmailText(accessToken, id)
             if (!text || cancelRef.current) return
 
-            const booking = await parseAndSaveEmail(text, userId)
+            // Parse only — nothing is persisted until the user confirms.
+            const booking = await parseEmail(text)
             if (booking && !cancelRef.current) {
               setFound(prev => {
                 // Deduplicate by conf number or by title+date
@@ -71,9 +72,19 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
     }
   }
 
-  const handleAddAll = () => {
-    found.forEach(b => addBooking(b))
-    onClose()
+  const handleAddAll = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await saveBookings(found, userId)
+      const all = await loadBookings(userId)
+      setBookings(all)
+      onClose()
+    } catch (err) {
+      setErrorMsg(`Couldn't save reservations: ${err.message}`)
+      setPhase('error')
+      setSaving(false)
+    }
   }
 
   const progress = total > 0 ? Math.round((processed / total) * 100) : 0
@@ -170,13 +181,14 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
               {found.length ? 'Skip' : 'Close'}
             </button>
             {found.length > 0 && (
-              <button onClick={handleAddAll} style={{
+              <button onClick={handleAddAll} disabled={saving} style={{
                 flex: 2, padding: '12px', borderRadius: 10,
                 background: T.color.brand, color: T.color.s0, border: 'none',
                 fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 700,
-                cursor: 'pointer', letterSpacing: '-0.2px',
+                cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '-0.2px',
+                opacity: saving ? 0.6 : 1,
               }}>
-                Add {found.length} to timeline
+                {saving ? 'Saving…' : `Add ${found.length} to timeline`}
               </button>
             )}
           </div>

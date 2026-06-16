@@ -9,7 +9,6 @@ import Wallet from './screens/Wallet.jsx'
 import Search from './screens/Search.jsx'
 import Settings from './screens/Settings.jsx'
 import BookingDetail from './screens/BookingDetail.jsx'
-import Onboarding from './screens/Onboarding.jsx'
 import ImportEmail from './screens/ImportEmail.jsx'
 import ScanInbox from './screens/ScanInbox.jsx'
 import Auth from './screens/Auth.jsx'
@@ -107,22 +106,32 @@ function AppShell({ children, showNav, onImport }) {
 }
 
 export default function App() {
-  const { isOnboarded, activeTab, selectedId, user, setUser, setBookings } = useStore()
+  const { activeTab, selectedId, user, setUser, setBookings } = useStore()
   const [showImport, setShowImport]   = useState(false)
   const [showScan, setShowScan]       = useState(false)
   const [gmailToken, setGmailToken]   = useState(null)
   const [authReady, setAuthReady]     = useState(false)
 
   useEffect(() => {
+    // Supabase only includes provider_token on the initial OAuth callback; it's
+    // gone after a page reload. Stash it so the Gmail scan still works on reload.
+    // NOTE: stopgap — provider tokens expire (~1h). A proper fix exchanges the
+    // refresh token server-side for a fresh access token on demand.
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      setGmailToken(session?.provider_token ?? null)
+      setGmailToken(session?.provider_token ?? sessionStorage.getItem('gmail_token'))
       setAuthReady(true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      setGmailToken(session?.provider_token ?? null)
+      if (session?.provider_token) {
+        sessionStorage.setItem('gmail_token', session.provider_token)
+        setGmailToken(session.provider_token)
+      } else if (!session) {
+        sessionStorage.removeItem('gmail_token')
+        setGmailToken(null)
+      }
       if (session?.provider_token && session?.user) {
         startGmailWatch(session)
         setupPushNotifications(session.user.id)
@@ -154,9 +163,11 @@ export default function App() {
       if (permission !== 'granted') return
       const reg = await navigator.serviceWorker.ready
       const existing = await reg.pushManager.getSubscription()
+      const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+      if (!vapidKey) return
       const sub = existing ?? await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: 'BH2T6wxxLRkfQyQbzQHwfUlpG9RSOPeYpKnJcc823IeE2qr0zlem-XUNdUURv8uiV-dZOm5SQjXWs95svPiesnc',
+        applicationServerKey: vapidKey,
       })
       await fetch('/api/push-subscribe', {
         method: 'POST',
@@ -167,11 +178,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!authReady || !isOnboarded) return
-    loadBookings(user?.id ?? null)
-      .then(rows => { if (rows.length > 0) setBookings(rows) })
-      .catch(() => {})
-  }, [authReady, isOnboarded, user?.id])
+    if (!authReady || !user?.id) return
+    loadBookings(user.id)
+      .then(rows => {
+        console.log('[rezo] loadBookings returned', rows.length, 'rows')
+        if (rows.length > 0) setBookings(rows)
+      })
+      .catch(err => console.error('[rezo] loadBookings error', err))
+  }, [authReady, user?.id])
 
   if (!authReady) {
     return (
@@ -200,6 +214,7 @@ export default function App() {
     return (
       <>
         <GlobalStyle />
+        <DesktopBrand />
         <AppShell><BookingDetail /></AppShell>
       </>
     )

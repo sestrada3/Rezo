@@ -1,5 +1,15 @@
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
 
+// Fetch with backoff on Gmail rate-limit (429) and transient 5xx responses.
+async function fetchWithRetry(url, opts, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    const res = await fetch(url, opts)
+    if (res.status !== 429 && res.status < 500) return res
+    if (i === tries - 1) return res
+    await new Promise(r => setTimeout(r, 2 ** i * 500))
+  }
+}
+
 const SEARCH_QUERY = [
   'subject:(confirmation OR reservation OR booking OR itinerary OR "your order" OR "order confirmed" OR "reservation confirmed")',
   'newer_than:2y',
@@ -17,7 +27,7 @@ export async function listConfirmationEmails(accessToken, maxTotal = 500) {
     url.searchParams.set('maxResults', Math.min(500, maxTotal - messages.length))
     if (pageToken) url.searchParams.set('pageToken', pageToken)
 
-    const res = await fetch(url.toString(), {
+    const res = await fetchWithRetry(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (!res.ok) throw new Error(`Gmail search failed: ${res.status}`)
@@ -31,7 +41,7 @@ export async function listConfirmationEmails(accessToken, maxTotal = 500) {
 }
 
 export async function getEmailText(accessToken, messageId) {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${GMAIL}/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   )
