@@ -15,6 +15,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
   const [found, setFound]           = useState([])
   const [saving, setSaving]         = useState(false)
   const [errorMsg, setErrorMsg]     = useState('')
+  const [errorStage, setErrorStage] = useState('scan') // scan | save
   const setBookings = useStore(s => s.setBookings)
   const cancelRef   = useRef(false)
 
@@ -37,34 +38,42 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
         if (cancelRef.current) break
         const batch = messages.slice(i, i + BATCH)
 
-        await Promise.all(batch.map(async ({ id }) => {
-          try {
-            const text = await getEmailText(accessToken, id)
-            if (!text || cancelRef.current) return
+        try {
+          await Promise.all(batch.map(async (msg) => {
+            const id = msg?.id
+            if (!id) { if (!cancelRef.current) setProcessed(p => p + 1); return }
+            try {
+              const text = await getEmailText(accessToken, id)
+              if (!text || cancelRef.current) return
 
-            // Parse only — nothing is persisted until the user confirms.
-            const booking = await parseEmail(text)
-            if (booking && !cancelRef.current) {
-              setFound(prev => {
-                // Deduplicate by conf number or by title+date
-                const key = booking.conf || `${booking.title}|${booking.dateISO}`
-                const isDupe = prev.some(b =>
-                  (b.conf && b.conf === booking.conf) ||
-                  (!b.conf && `${b.title}|${b.dateISO}` === key)
-                )
-                return isDupe ? prev : [...prev, booking]
-              })
+              // Parse only — nothing is persisted until the user confirms.
+              const booking = await parseEmail(text)
+              if (booking && !cancelRef.current) {
+                setFound(prev => {
+                  // Deduplicate by conf number or by title+date
+                  const key = booking.conf || `${booking.title}|${booking.dateISO}`
+                  const isDupe = prev.some(b =>
+                    (b.conf && b.conf === booking.conf) ||
+                    (!b.conf && `${b.title}|${b.dateISO}` === key)
+                  )
+                  return isDupe ? prev : [...prev, booking]
+                })
+              }
+            } catch {
+              // skip unparseable or non-booking emails silently
+            } finally {
+              if (!cancelRef.current) setProcessed(p => p + 1)
             }
-          } catch {
-            // skip unparseable or non-booking emails silently
-          } finally {
-            if (!cancelRef.current) setProcessed(p => p + 1)
-          }
-        }))
+          }))
+        } catch {
+          // a whole batch failed unexpectedly (e.g. malformed entry) — keep
+          // whatever was already found and move on to the next batch
+        }
       }
 
       setPhase('done')
     } catch (err) {
+      setErrorStage('scan')
       setErrorMsg(err.message.includes('401') || err.message.includes('403')
         ? 'Gmail access expired. Sign out and sign back in to reconnect.'
         : `Scan failed: ${err.message}`)
@@ -81,6 +90,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
       setBookings(all)
       onClose()
     } catch (err) {
+      setErrorStage('save')
       setErrorMsg(`Couldn't save reservations: ${err.message}`)
       setPhase('error')
       setSaving(false)
@@ -116,7 +126,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
             {phase === 'scanning' && 'Searching inbox…'}
             {phase === 'parsing'  && 'Reading emails…'}
             {phase === 'done'     && (found.length ? `Found ${found.length} reservation${found.length !== 1 ? 's' : ''}` : 'Nothing new found')}
-            {phase === 'error'    && 'Scan failed'}
+            {phase === 'error'    && (errorStage === 'save' ? 'Couldn’t save' : 'Scan failed')}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
             <X size={18} color={T.color.sub} />
