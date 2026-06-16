@@ -106,7 +106,7 @@ function AppShell({ children, showNav, onImport }) {
 }
 
 export default function App() {
-  const { isOnboarded, activeTab, selectedId, user, setUser, setBookings } = useStore()
+  const { activeTab, selectedId, user, setUser, setBookings } = useStore()
   const [showImport, setShowImport]   = useState(false)
   const [showScan, setShowScan]       = useState(false)
   const [gmailToken, setGmailToken]   = useState(null)
@@ -178,11 +178,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!authReady || !isOnboarded) return
-    loadBookings(user?.id ?? null)
+    if (!authReady || !user?.id) return
+    loadBookings(user.id)
       .then(rows => { if (rows.length > 0) setBookings(rows) })
       .catch(() => {})
-  }, [authReady, isOnboarded, user?.id])
+  }, [authReady, user?.id])
 
   if (!authReady) {
     return (
