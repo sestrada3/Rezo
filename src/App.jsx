@@ -180,8 +180,11 @@ export default function App() {
   useEffect(() => {
     if (!authReady || !user?.id) return
     loadBookings(user.id)
-      .then(rows => { if (rows.length > 0) setBookings(rows) })
-      .catch(() => {})
+      .then(rows => {
+        console.log('[rezo] loadBookings returned', rows.length, 'rows')
+        if (rows.length > 0) setBookings(rows)
+      })
+      .catch(err => console.error('[rezo] loadBookings error', err))
   }, [authReady, user?.id])
 
   if (!authReady) {
