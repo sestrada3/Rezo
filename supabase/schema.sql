@@ -22,10 +22,14 @@ create table if not exists bookings (
 create index if not exists bookings_user_date on bookings (user_id, date_iso);
 
 -- Dedupe key for bulk upserts during inbox scan (onConflict: user_id,conf).
--- Partial so bookings without a conf number aren't forced unique.
+-- Must NOT be partial (e.g. "where conf is not null") — Postgres can only use
+-- a partial index as an ON CONFLICT arbiter if the same predicate is repeated
+-- in the ON CONFLICT clause, which Supabase's upsert() has no way to do. A
+-- plain unique index works fine here anyway: Postgres already treats NULLs
+-- as distinct from each other, so multiple no-conf bookings per user are
+-- still allowed without a partial predicate.
 create unique index if not exists bookings_user_conf
-  on bookings (user_id, conf)
-  where conf is not null;
+  on bookings (user_id, conf);
 
 -- Row-level security: users only see their own bookings
 alter table bookings enable row level security;
