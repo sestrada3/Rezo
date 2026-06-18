@@ -42,8 +42,11 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
           await Promise.all(batch.map(async (msg) => {
             const id = msg?.id
             if (!id) { if (!cancelRef.current) setProcessed(p => p + 1); return }
+            let subject = null
             try {
-              const text = await getEmailText(accessToken, id)
+              const got = await getEmailText(accessToken, id)
+              subject = got.subject
+              const { text } = got
               if (!text || cancelRef.current) return
 
               // Parse only — nothing is persisted until the user confirms.
@@ -59,8 +62,8 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
                   return isDupe ? prev : [...prev, booking]
                 })
               }
-            } catch {
-              // skip unparseable or non-booking emails silently
+            } catch (err) {
+              console.warn('[rezo scan] skipped email', { messageId: id, subject, error: err.message })
             } finally {
               if (!cancelRef.current) setProcessed(p => p + 1)
             }

@@ -44,19 +44,21 @@ export async function listConfirmationEmails(accessToken, maxTotal = 500) {
   return messages
 }
 
+// Returns { text, subject } so callers can log the subject alongside any
+// downstream parse failure, instead of only knowing the opaque message id.
 export async function getEmailText(accessToken, messageId) {
   const res = await fetchWithRetry(
     `${GMAIL}/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   )
-  if (!res.ok) return null
+  if (!res.ok) return { text: null, subject: null }
   const msg = await res.json()
+  const subject = msg.payload?.headers?.find(h => h.name === 'Subject')?.value ?? null
   const text = extractText(msg.payload)
   if (!text?.trim()) {
-    const subject = msg.payload?.headers?.find(h => h.name === 'Subject')?.value
     console.warn('[rezo scan] no extractable text', { messageId, subject })
   }
-  return text
+  return { text, subject }
 }
 
 function extractText(payload, depth = 0) {
