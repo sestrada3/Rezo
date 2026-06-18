@@ -51,11 +51,16 @@ export async function getEmailText(accessToken, messageId) {
   )
   if (!res.ok) return null
   const msg = await res.json()
-  return extractText(msg.payload)
+  const text = extractText(msg.payload)
+  if (!text?.trim()) {
+    const subject = msg.payload?.headers?.find(h => h.name === 'Subject')?.value
+    console.warn('[rezo scan] no extractable text', { messageId, subject })
+  }
+  return text
 }
 
 function extractText(payload, depth = 0) {
-  if (!payload || depth > 6) return null
+  if (!payload || depth > 12) return null
 
   // Prefer plain text
   if (payload.mimeType === 'text/plain' && payload.body?.data) {
@@ -121,5 +126,5 @@ function stripHtml(html) {
     .replace(/&quot;/gi, '"')
     .replace(/\s{2,}/g, ' ')
     .trim()
-    .slice(0, 4000)
+    .slice(0, 16000)
 }
