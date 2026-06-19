@@ -78,8 +78,28 @@ export default async function handler(req, res) {
     }
 
     if (parsed.error) return res.status(422).json({ ok: false, error: parsed.error })
-    const list = Array.isArray(parsed) ? parsed : [parsed]
-    const bookings = list.map((b, i) => ({ ...b, id: `b_${Date.now()}_${i}` }))
+
+    // Claude is instructed to return a bare array for multi-leg emails, but
+    // models sometimes wrap it anyway (e.g. {"bookings": [...]}). Unwrap any
+    // single common wrapper key before treating it as a flat list.
+    let list = Array.isArray(parsed) ? parsed : [parsed]
+    if (list.length === 1 && !Array.isArray(parsed)) {
+      const wrapperKey = ['bookings', 'reservations', 'items', 'results'].find(
+        k => Array.isArray(parsed[k])
+      )
+      if (wrapperKey) list = parsed[wrapperKey]
+    }
+
+    // A real booking always has at least these fields. Drop anything that
+    // doesn't, rather than letting a malformed item hit the DB's not-null
+    // constraints and fail the whole save.
+    const valid = list.filter(b => b && b.type && b.title && b.dateISO)
+    if (!valid.length) {
+      console.warn('[rezo parse] no valid bookings in response', text.slice(0, 500))
+      return res.status(500).json({ ok: false, error: 'parse_failed' })
+    }
+
+    const bookings = valid.map((b, i) => ({ ...b, id: `b_${Date.now()}_${i}` }))
     return res.status(200).json({ ok: true, bookings })
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message })
