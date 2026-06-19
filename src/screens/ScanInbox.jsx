@@ -50,16 +50,20 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
               if (!text || cancelRef.current) return
 
               // Parse only — nothing is persisted until the user confirms.
-              const booking = await parseEmail(text)
-              if (booking && !cancelRef.current) {
+              // One email can hold multiple distinct reservations (e.g. the
+              // outbound and return legs of a round-trip itinerary).
+              const parsed = await parseEmail(text)
+              if (parsed.length && !cancelRef.current) {
                 setFound(prev => {
-                  // Deduplicate by conf number or by title+date
-                  const key = booking.conf || `${booking.title}|${booking.dateISO}`
-                  const isDupe = prev.some(b =>
-                    (b.conf && b.conf === booking.conf) ||
-                    (!b.conf && `${b.title}|${b.dateISO}` === key)
-                  )
-                  return isDupe ? prev : [...prev, booking]
+                  let next = prev
+                  for (const booking of parsed) {
+                    // Dedupe on conf+date (not conf alone — separate legs of
+                    // one itinerary often share a single confirmation number).
+                    const key = `${booking.conf || booking.title}|${booking.dateISO}`
+                    const isDupe = next.some(b => `${b.conf || b.title}|${b.dateISO}` === key)
+                    if (!isDupe) next = [...next, booking]
+                  }
+                  return next
                 })
               }
             } catch (err) {

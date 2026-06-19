@@ -17,7 +17,9 @@ function bookingToRow(b, userId, source) {
   }
 }
 
-// Parse an email into a booking WITHOUT writing to the DB.
+// Parse an email into one or more bookings WITHOUT writing to the DB.
+// One email can hold multiple distinct reservations (e.g. outbound + return
+// flight legs of a round-trip itinerary), so this always returns an array.
 export async function parseEmail(emailText) {
   const res = await fetch('/api/parse-email', {
     method: 'POST',
@@ -26,18 +28,21 @@ export async function parseEmail(emailText) {
   })
   const result = await res.json()
   if (!result.ok) throw new Error(result.error || 'parse_failed')
-  return { ...result.booking, raw_email: emailText }
+  return result.bookings.map(b => ({ ...b, raw_email: emailText }))
 }
 
-// Parse + persist a single email (used by manual import).
+// Parse + persist a single email (used by manual import). May yield more
+// than one booking (e.g. round-trip flight legs sharing one confirmation).
 export async function parseAndSaveEmail(emailText, userId) {
   if (!userId) throw new Error('not_signed_in')
-  const booking = await parseEmail(emailText)
-  const [saved] = await saveBookings([booking], userId, 'manual')
-  return saved
+  const bookings = await parseEmail(emailText)
+  return saveBookings(bookings, userId, 'manual')
 }
 
-// Bulk upsert confirmed bookings. Dedupes on (user_id, conf) server-side.
+// Bulk upsert confirmed bookings. Dedupes on (user_id, conf, date_iso) —
+// NOT just (user_id, conf), since multiple distinct reservations (e.g. the
+// outbound and return legs of one round-trip itinerary) often share a single
+// confirmation/itinerary number but always have different dates.
 export async function saveBookings(bookings, userId, source = 'scan') {
   if (!userId) throw new Error('not_signed_in')
   if (!bookings.length) return []
@@ -51,7 +56,7 @@ export async function saveBookings(bookings, userId, source = 'scan') {
     const { data, error } = await supabase
       .from('bookings')
       .upsert(withConf.map(b => bookingToRow(b, userId, source)), {
-        onConflict: 'user_id,conf',
+        onConflict: 'user_id,conf,date_iso',
       })
       .select()
     if (error) throw new Error(error.message)

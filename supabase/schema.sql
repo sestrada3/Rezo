@@ -21,15 +21,22 @@ create table if not exists bookings (
 -- Index for fast user timeline queries
 create index if not exists bookings_user_date on bookings (user_id, date_iso);
 
--- Dedupe key for bulk upserts during inbox scan (onConflict: user_id,conf).
+-- Dedupe key for bulk upserts during inbox scan (onConflict: user_id,conf,date_iso).
 -- Must NOT be partial (e.g. "where conf is not null") — Postgres can only use
 -- a partial index as an ON CONFLICT arbiter if the same predicate is repeated
 -- in the ON CONFLICT clause, which Supabase's upsert() has no way to do. A
 -- plain unique index works fine here anyway: Postgres already treats NULLs
 -- as distinct from each other, so multiple no-conf bookings per user are
 -- still allowed without a partial predicate.
-create unique index if not exists bookings_user_conf
-  on bookings (user_id, conf);
+--
+-- Includes date_iso (not just conf) because multiple DISTINCT reservations
+-- — e.g. the outbound and return flight legs of one round-trip itinerary —
+-- routinely share a single confirmation/itinerary number but always have
+-- different dates. Deduping on conf alone collapsed those into one row.
+-- If you already have the old (user_id, conf) index, run:
+--   drop index if exists bookings_user_conf;
+create unique index if not exists bookings_user_conf_date
+  on bookings (user_id, conf, date_iso);
 
 -- Row-level security: users only see their own bookings
 alter table bookings enable row level security;

@@ -2,11 +2,24 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const SYSTEM = `You are a booking confirmation email parser. Extract reservation data from emails and return a single JSON object.
+const SYSTEM = `You are a booking confirmation email parser. Extract reservation data from emails and return ONLY valid JSON, no prose, no markdown fences.
 
-Return ONLY valid JSON, no prose, no markdown fences. If the email is not a booking confirmation, return {"error": "not_a_booking"}.
+Many confirmation emails cover MORE THAN ONE reservation — most commonly a
+round-trip or multi-city flight itinerary (separate outbound/return/connecting
+flight segments), but also things like a hotel stay split across two non-
+contiguous bookings, or a multi-event ticket order. Each such segment is its
+own distinct reservation with its own date, even if they share one
+itinerary/order/confirmation number.
 
-JSON schema to return:
+- If the email contains exactly ONE reservation, return a single JSON object
+  matching the schema below.
+- If the email contains MULTIPLE distinct reservations (e.g. outbound +
+  return flight legs), return a JSON ARRAY of objects, one per reservation,
+  each matching the schema below. Do not merge separate legs/segments into
+  one object — every distinct date+route/event needs its own entry.
+- If the email is not a booking confirmation, return {"error": "not_a_booking"}.
+
+JSON schema (for each object):
 {
   "type": "flight|hotel|dining|concert|sports|theater|car|other",
   "title": "short display title (e.g. JFK → LAX, Bestia, Hamilton)",
@@ -15,7 +28,7 @@ JSON schema to return:
   "dateISO": "YYYY-MM-DD",
   "time": "H:MM AM/PM",
   "status": "confirmed|pending|cancelled",
-  "conf": "confirmation number or code",
+  "conf": "confirmation number or code (same value across legs that share one itinerary number is fine)",
   "details": {
     // FLIGHT: airline, flightNum, from{code,name,terminal,gate}, to{code,name,terminal,gate}, departs, arrives, seat, class, baggage
     // HOTEL: property, address, checkIn, checkOut, nights, roomType, guests
@@ -46,7 +59,7 @@ export default async function handler(req, res) {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: SYSTEM,
       messages: [{ role: 'user', content: `Parse this confirmation email:\n\n${emailText}` }],
     })
@@ -57,13 +70,17 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(text)
     } catch {
-      const match = text.match(/\{[\s\S]*\}/)
+      // Fallback for stray prose around the JSON — try array first since an
+      // array response is wrapped in [...], not {...}.
+      const match = text.match(/\[[\s\S]*\]/) || text.match(/\{[\s\S]*\}/)
       if (!match) return res.status(500).json({ ok: false, error: 'parse_failed' })
       parsed = JSON.parse(match[0])
     }
 
     if (parsed.error) return res.status(422).json({ ok: false, error: parsed.error })
-    return res.status(200).json({ ok: true, booking: { ...parsed, id: `b_${Date.now()}` } })
+    const list = Array.isArray(parsed) ? parsed : [parsed]
+    const bookings = list.map((b, i) => ({ ...b, id: `b_${Date.now()}_${i}` }))
+    return res.status(200).json({ ok: true, bookings })
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message })
   }

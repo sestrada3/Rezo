@@ -26,8 +26,9 @@ export default function ImportEmail({ onClose, userId }) {
     if (!text.trim()) return
     setState('parsing'); setPreview(null); setErrorMsg('')
     try {
-      const booking = await parseAndSaveEmail(text, userId)
-      setPreview(booking); setState('success')
+      // One email can hold multiple reservations (e.g. round-trip flight legs).
+      const bookings = await parseAndSaveEmail(text, userId)
+      setPreview(bookings); setState('success')
     } catch (err) {
       setErrorMsg(err.message === 'not_a_booking'
         ? "This doesn't look like a booking confirmation."
@@ -36,7 +37,7 @@ export default function ImportEmail({ onClose, userId }) {
     }
   }
 
-  const handleAdd = () => { if (preview) { addBooking(preview); onClose() } }
+  const handleAdd = () => { if (preview?.length) { preview.forEach(addBooking); onClose() } }
   const handleReset = () => { setText(''); setState('idle'); setPreview(null); setErrorMsg('') }
 
   return (
@@ -74,7 +75,7 @@ export default function ImportEmail({ onClose, userId }) {
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 8px' }}>
-          {state === 'success' && preview ? (
+          {state === 'success' && preview?.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
@@ -82,9 +83,11 @@ export default function ImportEmail({ onClose, userId }) {
                 background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)',
               }}>
                 <Check size={14} color="#4ADE80" weight="bold" />
-                <span style={{ ...T.font.cardSub, color: '#4ADE80', fontWeight: 500 }}>Booking found</span>
+                <span style={{ ...T.font.cardSub, color: '#4ADE80', fontWeight: 500 }}>
+                  {preview.length === 1 ? 'Booking found' : `${preview.length} bookings found`}
+                </span>
               </div>
-              <BookingCard booking={preview} onClick={() => {}} />
+              {preview.map((b, i) => <BookingCard key={b.id ?? i} booking={b} onClick={() => {}} />)}
             </div>
           ) : (
             <textarea
