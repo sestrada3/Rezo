@@ -4,6 +4,8 @@ import BookingCard from '../components/BookingCard.jsx'
 import HeroCard from '../components/HeroCard.jsx'
 import CategoryChip from '../components/CategoryChip.jsx'
 import SectionHeader from '../components/SectionHeader.jsx'
+import TripHeader from '../components/TripHeader.jsx'
+import { groupIntoTrips } from '../lib/trips.js'
 import { BellSimple } from '@phosphor-icons/react'
 
 const CHIPS = [
@@ -16,15 +18,6 @@ const CHIPS = [
   { label: 'Shows',    value: 'theater' },
   { label: 'Cars',     value: 'car'     },
 ]
-
-function groupByDate(bookings) {
-  const map = new Map()
-  for (const b of bookings) {
-    if (!map.has(b.date)) map.set(b.date, [])
-    map.get(b.date).push(b)
-  }
-  return Array.from(map.entries()).map(([date, items]) => ({ date, items }))
-}
 
 function dayLabel(isoDate) {
   if (!isoDate) return ''
@@ -43,7 +36,7 @@ export default function Timeline() {
     : bookings.filter(b => b.type === activeFilter)
 
   const nextUp = bookings.find(b => b.status !== 'cancelled')
-  const groups = groupByDate(filtered)
+  const sections = groupIntoTrips(filtered)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.color.s0 }}>
@@ -86,12 +79,21 @@ export default function Timeline() {
             No bookings in this category
           </div>
         ) : (
-          groups.map(group => (
-            <div key={group.date}>
-              <SectionHeader label={dayLabel(group.items[0].dateISO)} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: T.space.cardGap }}>
-                {group.items.map(b => (
-                  <BookingCard key={b.id} booking={b} isToday={b.status === 'today'} onClick={() => select(b.id)} />
+          sections.map(section => (
+            <div key={section.key}>
+              {section.kind === 'trip' && (
+                <TripHeader label={section.label} dateRange={section.dateRange} />
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {section.days.map(day => (
+                  <div key={day.dateISO}>
+                    <SectionHeader label={dayLabel(day.dateISO)} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: T.space.cardGap }}>
+                      {day.items.map(b => (
+                        <BookingCard key={b.id} booking={b} isToday={b.status === 'today'} onClick={() => select(b.id)} />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
