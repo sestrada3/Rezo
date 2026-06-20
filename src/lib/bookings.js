@@ -47,8 +47,17 @@ export async function saveBookings(bookings, userId, source = 'scan') {
   if (!userId) throw new Error('not_signed_in')
   if (!bookings.length) return []
 
-  const withConf    = bookings.filter(b => b.conf)
-  const withoutConf = bookings.filter(b => !b.conf)
+  // A real booking always has these — the parse API should already filter
+  // malformed responses, but never let one bad item (e.g. stale client
+  // state from before a parser fix, or a future regression) take down the
+  // whole batch via a DB not-null violation.
+  const valid = bookings.filter(b => b?.type && b?.title && b?.dateISO)
+  const invalid = bookings.length - valid.length
+  if (invalid) console.warn('[rezo save] dropped malformed booking(s)', bookings.filter(b => !(b?.type && b?.title && b?.dateISO)))
+  if (!valid.length) return []
+
+  const withConf    = valid.filter(b => b.conf)
+  const withoutConf = valid.filter(b => !b.conf)
   const saved = []
 
   // Rows with a conf number can be safely upserted (idempotent).
