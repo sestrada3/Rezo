@@ -43,9 +43,11 @@ Schema lives in `supabase/schema.sql` (bookings table + indexes/RLS) and `supaba
 
 ## Open issue (as of 2026-06-19)
 
-User still sees `Couldn't save reservations: null value in column "type" of relation "bookings" violates not-null constraint` on "Add to timeline" after two rounds of server- and client-side fixes (`c8fbde7`, `668132c` — see changelog). Both fixes are confirmed pushed and deployed but the user reports the **exact same error message**, even after being asked to retry. Leading hypothesis: Rezo is a PWA with a service worker (`src/sw.js`, `vite-plugin-pwa`) — the browser/PWA may be serving a stale cached JS bundle from before the fix, not actually running the latest deployed code. User was mid-way through doing a hard reload (Ctrl+Shift+R) / clearing site data for rezo-rouge.vercel.app to rule this out when the session ended.
+User still sees `Couldn't save reservations: null value in column "type" of relation "bookings" violates not-null constraint` on "Add to timeline" after two rounds of server- and client-side fixes (`c8fbde7`, `668132c` — see changelog). Both fixes are confirmed pushed and deployed but the user reports the **exact same error message**, even after being asked to retry.
 
-**Next step:** confirm whether a true hard reload changes anything. If the error persists even on a verified-fresh bundle, the `[rezo save]` console.warn added in `668132c` will print the exact malformed booking object — get that from the browser console rather than guessing further. If it turns out to be the SW cache, consider adding a cache-busting / skip-waiting strategy to the service worker config so deploys take effect immediately instead of requiring a manual hard reload.
+**Root cause found and fixed** (commit `69e565e`): `vite.config.js` uses `strategies: 'injectManifest'` with `registerType: 'autoUpdate'`, but `src/sw.js` never called `self.skipWaiting()` / `clientsClaim()`. Unlike the `generateSW` strategy, `injectManifest` does **not** auto-add that behavior — so every new service worker installed but sat in the "waiting" state forever, meaning the browser kept serving the old cached bundle indefinitely regardless of redeploys, and even a normal Ctrl+Shift+R reload wouldn't fix it (only a full unregister/clear-site-data would). This fully explains why two rounds of confirmed-deployed fixes never reached the user.
+
+**Next step:** confirm with the user that a normal reload (no manual cache-clearing needed) now picks up fixes going forward. If a save error still somehow occurs after this lands, the `[rezo save]` console.warn added in `668132c` will print the exact malformed booking object — pull that from the browser console.
 
 ## Known gaps
 
