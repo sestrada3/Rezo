@@ -51,7 +51,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
               const got = await getEmailText(accessToken, id)
               subject = got.subject
               const { text } = got
-              if (!text || cancelRef.current) return
+              if (!text || cancelRef.current) { scannedThisRun.push(id); return }
 
               // Parse only — nothing is persisted until the user confirms.
               // One email can hold multiple distinct reservations (e.g. the
@@ -70,10 +70,13 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
                   return next
                 })
               }
+              scannedThisRun.push(id)
             } catch (err) {
               console.warn('[rezo scan] skipped email', { messageId: id, subject, error: err.message })
+              // Don't record as scanned — a transient error (network, parse
+              // API, etc.) shouldn't permanently hide this email from future
+              // scans the way a genuine "not a booking" result should.
             } finally {
-              scannedThisRun.push(id)
               if (!cancelRef.current) setProcessed(p => p + 1)
             }
           }))
