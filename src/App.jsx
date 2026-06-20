@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from './store.js'
 import { T } from './tokens.js'
 import { supabase } from './lib/supabase.js'
@@ -112,6 +112,7 @@ export default function App() {
   const [gmailToken, setGmailToken]   = useState(null)
   const [authReady, setAuthReady]     = useState(false)
   const [bookingsReady, setBookingsReady] = useState(false)
+  const watchStarted = useRef(false)
 
   useEffect(() => {
     // Supabase only includes provider_token on the initial OAuth callback; it's
@@ -133,7 +134,12 @@ export default function App() {
         sessionStorage.removeItem('gmail_token')
         setGmailToken(null)
       }
-      if (session?.provider_token && session?.user) {
+      // onAuthStateChange fires repeatedly (initial session, sign-in, token
+      // refresh) — only kick off the watch/push setup once per page load,
+      // not on every refresh, especially since gmail-watch isn't configured
+      // in production yet and 400s every time it's called (see README).
+      if (session?.provider_token && session?.user && !watchStarted.current) {
+        watchStarted.current = true
         startGmailWatch(session)
         setupPushNotifications(session.user.id)
       }
