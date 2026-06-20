@@ -50,13 +50,19 @@ A "Scan Inbox" run pulled up to 500 emails from the last 2 years and sent **ever
 
 Not done: rule-based regex parsers for high-volume senders (OpenTable, Ticketmaster, specific airlines) to skip the LLM call entirely for known templates (how TripIt does it). Deliberately not hand-written blind — getting a date/seat/time wrong and silently saving it is worse than the API cost. `raw_email` is already stored on every booking, so once there's real volume, mine those for actual sender templates before writing per-sender parsers.
 
-## Open issue (as of 2026-06-19)
+## Resolved: stale service worker masking deploys (2026-06-19)
 
-User still sees `Couldn't save reservations: null value in column "type" of relation "bookings" violates not-null constraint` on "Add to timeline" after two rounds of server- and client-side fixes (`c8fbde7`, `668132c` — see changelog). Both fixes are confirmed pushed and deployed but the user reports the **exact same error message**, even after being asked to retry.
+User kept seeing the save-error bug even after two confirmed-deployed fixes (`c8fbde7`, `668132c`). Root cause (commit `69e565e`): `vite.config.js` uses `strategies: 'injectManifest'` with `registerType: 'autoUpdate'`, but `src/sw.js` never called `self.skipWaiting()` / `clientsClaim()`. Unlike `generateSW`, `injectManifest` doesn't auto-add that — so every new service worker sat in "waiting" forever and the browser kept serving the old cached bundle regardless of redeploys, even after a normal hard reload. Fixed.
 
-**Root cause found and fixed** (commit `69e565e`): `vite.config.js` uses `strategies: 'injectManifest'` with `registerType: 'autoUpdate'`, but `src/sw.js` never called `self.skipWaiting()` / `clientsClaim()`. Unlike the `generateSW` strategy, `injectManifest` does **not** auto-add that behavior — so every new service worker installed but sat in the "waiting" state forever, meaning the browser kept serving the old cached bundle indefinitely regardless of redeploys, and even a normal Ctrl+Shift+R reload wouldn't fix it (only a full unregister/clear-site-data would). This fully explains why two rounds of confirmed-deployed fixes never reached the user.
+## Open issue: trip grouping built, July 3 leg still unconfirmed (as of 2026-06-20)
 
-**Next step:** confirm with the user that a normal reload (no manual cache-clearing needed) now picks up fixes going forward. If a save error still somehow occurs after this lands, the `[rezo save]` console.warn added in `668132c` will print the exact malformed booking object — pull that from the browser console.
+User's complaint: round-trip itinerary (Jun 28 outbound, Jul 3 return) wasn't grouped as one trip, and the **Jul 3 return-leg booking didn't appear on the timeline at all**.
+
+- **Trip grouping shipped** (`9b35b40`, `src/lib/trips.js`) — round-trip flight pairs (A→B then later B→A) now bracket a trip window; every other booking dated in between (hotel, car, dining, events, the return flight itself) gets bundled under one `TripHeader`. Verified against synthetic data matching the user's shape — works correctly (see commit message).
+- **Still unresolved: is the Jul 3 booking actually missing from the DB, or was it just being displayed as an isolated, easy-to-miss standalone day before trip grouping existed?** These are different bugs with different fixes, and trip grouping alone can't surface a row that was never saved. Diagnostic in progress:
+  - User shared a scan console log — it only showed expected `not_a_booking` skips (newsletters/promos, normal noise from the deliberately wide Gmail search query). Did **not** yet show the actual airline confirmation email or any `[rezo parse] no valid bookings` / `[rezo save] dropped malformed booking` warning.
+  - **Next step:** (1) have the user filter the console to `rezo` and find the specific log line for the July 3 return-flight email's subject/messageId during a scan — confirms whether it parsed. (2) Check whether Jul 3 shows up on the timeline *at all* right now (even pre-grouping, as its own standalone day) — if it's absent entirely, the row was never saved (parse/save bug); if it was there all along just unglued from the rest of the trip, trip grouping alone fixes it and there's no data bug.
+- Also fixed in passing (`eb17a7c`): `api/gmail-watch` was firing repeatedly (3x 400s per page load) because `startGmailWatch()` had no guard against `onAuthStateChange` re-firing on token refresh. Now only fires once per load. Unrelated to the missing-booking issue — the watch feature itself is still unconfigured in production (see Known gaps).
 
 ## Known gaps
 
