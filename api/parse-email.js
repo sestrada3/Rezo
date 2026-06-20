@@ -58,7 +58,7 @@ export default async function handler(req, res) {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5',
       max_tokens: 2048,
       system: SYSTEM,
       messages: [{ role: 'user', content: `Parse this confirmation email:\n\n${emailText}` }],

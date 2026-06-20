@@ -63,3 +63,25 @@ create policy "users can delete own bookings"
 --   drop policy if exists "anon can insert bookings" on bookings;
 --   drop policy if exists "anon can read null-user bookings" on bookings;
 --   delete from bookings where user_id is null;
+
+-- Tracks every Gmail message ID a user's "Scan Inbox" has already processed
+-- (whether or not it produced a booking), so re-scans skip straight past
+-- already-seen mail instead of re-sending it to the Claude parse API every
+-- time. Without this, every scan re-parsed the full lookback window from
+-- scratch — the dominant driver of token cost.
+create table if not exists scanned_emails (
+  user_id    uuid references auth.users on delete cascade,
+  message_id text not null,
+  created_at timestamptz default now(),
+  primary key (user_id, message_id)
+);
+
+alter table scanned_emails enable row level security;
+
+create policy "users can read own scanned emails"
+  on scanned_emails for select
+  using (auth.uid() = user_id);
+
+create policy "users can insert own scanned emails"
+  on scanned_emails for insert
+  with check (auth.uid() = user_id);

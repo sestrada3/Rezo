@@ -97,6 +97,30 @@ export async function loadBookings(userId) {
   return data.map(dbRowToBooking)
 }
 
+// Gmail message IDs already processed by a previous scan for this user, so
+// "Scan Inbox" can skip them instead of re-sending the same email to the
+// parse API every time it runs.
+export async function getScannedEmailIds(userId) {
+  if (!userId) return new Set()
+  const { data, error } = await supabase
+    .from('scanned_emails')
+    .select('message_id')
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+  return new Set(data.map(r => r.message_id))
+}
+
+export async function markEmailsScanned(userId, messageIds) {
+  if (!userId || !messageIds.length) return
+  const { error } = await supabase
+    .from('scanned_emails')
+    .upsert(
+      messageIds.map(message_id => ({ user_id: userId, message_id })),
+      { onConflict: 'user_id,message_id', ignoreDuplicates: true }
+    )
+  if (error) throw new Error(error.message)
+}
+
 export async function deleteBooking(id) {
   const { error } = await supabase.from('bookings').delete().eq('id', id)
   if (error) throw new Error(error.message)

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { T } from '../tokens.js'
 import { X, Warning } from '@phosphor-icons/react'
 import { listConfirmationEmails, getEmailText } from '../lib/gmail.js'
-import { parseEmail, saveBookings, loadBookings } from '../lib/bookings.js'
+import { parseEmail, saveBookings, loadBookings, getScannedEmailIds, markEmailsScanned } from '../lib/bookings.js'
 import { useStore } from '../store.js'
 import BookingCard from '../components/BookingCard.jsx'
 
@@ -28,20 +28,24 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
   async function run() {
     try {
       setPhase('scanning')
-      const messages = await listConfirmationEmails(accessToken, 500)
-      if (!messages.length) { setPhase('done'); return }
+      const [messages, alreadyScanned] = await Promise.all([
+        listConfirmationEmails(accessToken, 500),
+        getScannedEmailIds(userId),
+      ])
+      const newMessages = messages.filter(m => m?.id && !alreadyScanned.has(m.id))
+      if (!newMessages.length) { setPhase('done'); return }
 
-      setTotal(messages.length)
+      setTotal(newMessages.length)
       setPhase('parsing')
+      const scannedThisRun = []
 
-      for (let i = 0; i < messages.length; i += BATCH) {
+      for (let i = 0; i < newMessages.length; i += BATCH) {
         if (cancelRef.current) break
-        const batch = messages.slice(i, i + BATCH)
+        const batch = newMessages.slice(i, i + BATCH)
 
         try {
           await Promise.all(batch.map(async (msg) => {
-            const id = msg?.id
-            if (!id) { if (!cancelRef.current) setProcessed(p => p + 1); return }
+            const id = msg.id
             let subject = null
             try {
               const got = await getEmailText(accessToken, id)
@@ -69,6 +73,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
             } catch (err) {
               console.warn('[rezo scan] skipped email', { messageId: id, subject, error: err.message })
             } finally {
+              scannedThisRun.push(id)
               if (!cancelRef.current) setProcessed(p => p + 1)
             }
           }))
@@ -77,6 +82,12 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
           // whatever was already found and move on to the next batch
         }
       }
+
+      // Record every processed message ID — including ones that errored or
+      // weren't a booking — so the next scan doesn't pay to re-parse them.
+      markEmailsScanned(userId, scannedThisRun).catch(err =>
+        console.warn('[rezo scan] failed to record scanned emails', err.message)
+      )
 
       setPhase('done')
     } catch (err) {

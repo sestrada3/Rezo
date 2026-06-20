@@ -41,6 +41,15 @@ Both go through `src/lib/bookings.js`:
 
 Schema lives in `supabase/schema.sql` (bookings table + indexes/RLS) and `supabase/tokens-schema.sql` (`user_tokens`, for the Pub/Sub feature). **Neither file auto-applies** — run them manually in the Supabase Dashboard → SQL Editor whenever they change, and check the live DB matches before assuming a fix landed.
 
+## API cost (2026-06-19)
+
+A "Scan Inbox" run pulled up to 500 emails from the last 2 years and sent **every one** to Claude on every run, with no memory of what had already been scanned — so each re-scan re-paid for the entire backlog. Combined with the email-text cap being raised 4x (4000→16000 chars, see Recent fixes) and using Sonnet, this drove cost to $60+/month before the app was even live. Two fixes landed:
+
+- **`scanned_emails` table** (new, in `supabase/schema.sql` — **must be run manually**, see above) records every Gmail message ID a scan has processed (booking or not). `ScanInbox.jsx` now filters them out before parsing, so re-scans only pay for genuinely new mail. `bookings.js` adds `getScannedEmailIds()` / `markEmailsScanned()`.
+- **Parse model switched to `claude-haiku-4-5`** (`api/parse-email.js`) — this is structured extraction, not reasoning; Haiku is ~4x cheaper per token than Sonnet. Worth re-checking extraction accuracy on a few real emails after this lands.
+
+Not done: rule-based regex parsers for high-volume senders (OpenTable, Ticketmaster, specific airlines) to skip the LLM call entirely for known templates (how TripIt does it). Deliberately not hand-written blind — getting a date/seat/time wrong and silently saving it is worse than the API cost. `raw_email` is already stored on every booking, so once there's real volume, mine those for actual sender templates before writing per-sender parsers.
+
 ## Open issue (as of 2026-06-19)
 
 User still sees `Couldn't save reservations: null value in column "type" of relation "bookings" violates not-null constraint` on "Add to timeline" after two rounds of server- and client-side fixes (`c8fbde7`, `668132c` — see changelog). Both fixes are confirmed pushed and deployed but the user reports the **exact same error message**, even after being asked to retry.
