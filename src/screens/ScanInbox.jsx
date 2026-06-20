@@ -57,6 +57,7 @@ export default function ScanInbox({ onClose, accessToken, userId }) {
               // One email can hold multiple distinct reservations (e.g. the
               // outbound and return legs of a round-trip itinerary).
               const parsed = await parseEmail(text)
+              console.log('[rezo parse] result', { subject, bookings: parsed.length, dates: parsed.map(b => b.dateISO) })
               if (parsed.length && !cancelRef.current) {
                 setFound(prev => {
                   let next = prev
